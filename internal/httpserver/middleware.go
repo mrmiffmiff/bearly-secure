@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,33 @@ func applyMiddleware(handler http.Handler, middlewareChain ...middleware) http.H
 		handler = currentMiddleware(handler)
 	}
 	return handler
+}
+
+func noCSRF(next http.Handler, appOrigin string, renderer *templates.Renderer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			reqOrigin := r.Header.Get("Origin")
+			if reqOrigin == "" {
+				referer, err := url.Parse(r.Referer())
+				if err != nil || referer.Host == "" || referer.Scheme == "" {
+					badOriginHelper(w, renderer)
+					return
+				}
+				reqOrigin = referer.Scheme + "://" + referer.Host
+			}
+			if reqOrigin != appOrigin {
+				badOriginHelper(w, renderer)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func badOriginHelper(w http.ResponseWriter, renderer *templates.Renderer) {
+	if err := httpx.RespondWithErrorPage(w, renderer, http.StatusForbidden, "Forbidden", "Origin doesn't match"); err != nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	}
 }
 
 func noSniff(next http.Handler) http.Handler {
