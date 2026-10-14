@@ -30,30 +30,32 @@ func applyMiddleware(handler http.Handler, middlewareChain ...middleware) http.H
 	return handler
 }
 
-func noCSRF(next http.Handler, appOrigin string, renderer *templates.Renderer) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			reqOrigin := r.Header.Get("Origin")
-			if reqOrigin == "" {
-				referer, err := url.Parse(r.Referer())
-				if err != nil || referer.Host == "" || referer.Scheme == "" {
+func validateRequestOrigin(appOrigin string, renderer *templates.Renderer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				reqOrigin := r.Header.Get("Origin")
+				if reqOrigin == "" {
+					referer, err := url.Parse(r.Referer())
+					if err != nil || referer.Host == "" || referer.Scheme == "" {
+						badOriginHelper(w, renderer)
+						return
+					}
+					reqOrigin = referer.Scheme + "://" + referer.Host
+				}
+				if reqOrigin != appOrigin {
 					badOriginHelper(w, renderer)
 					return
 				}
-				reqOrigin = referer.Scheme + "://" + referer.Host
 			}
-			if reqOrigin != appOrigin {
-				badOriginHelper(w, renderer)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func badOriginHelper(w http.ResponseWriter, renderer *templates.Renderer) {
 	if err := httpx.RespondWithErrorPage(w, renderer, http.StatusForbidden, "Forbidden", "Origin doesn't match"); err != nil {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
