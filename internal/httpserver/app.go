@@ -236,7 +236,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	handler := applyMiddleware(
 		mainMux,
 		cspNonce,
-		csp,
+		globalSecurity,
 		recoverPanics(logger, renderer),
 		noSniff,
 	)
