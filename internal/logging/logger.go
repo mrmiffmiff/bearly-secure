@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+var sensitiveFields = map[string]struct{}{
+	"sessionId":   {},
+	"resetToken":  {},
+	"resetLink":   {},
+	"secret":      {},
+	"adminNotes":  {},
+	"storagePath": {},
+}
+
 type Logger struct {
 	mutex sync.Mutex
 	file  *os.File
@@ -31,7 +40,20 @@ func (logger *Logger) Close() error {
 	return logger.file.Close()
 }
 
+func redact(fields map[string]any) map[string]any {
+	redacted := make(map[string]any, len(fields))
+	for name, value := range fields {
+		if _, sensitive := sensitiveFields[name]; sensitive {
+			redacted[name] = "[REDACTED]"
+			continue
+		}
+		redacted[name] = value
+	}
+	return redacted
+}
+
 func (logger *Logger) Event(eventName string, fields map[string]any) error {
+	fields = redact(fields)
 	record := map[string]any{
 		"timestamp": logger.now().UTC().Format("2006-01-02T15:04:05.000Z"),
 		"event":     eventName,
