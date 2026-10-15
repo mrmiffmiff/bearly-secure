@@ -26,6 +26,15 @@ type orderItemResponse struct {
 	PriceCents  int64  `json:"price_cents"`
 }
 
+func toOrderItemResponse(item orders.Item) orderItemResponse {
+	return orderItemResponse{
+		ProductID:   item.ProductID,
+		ProductName: item.ProductName,
+		Quantity:    item.Quantity,
+		PriceCents:  item.PriceCents,
+	}
+}
+
 type Handler struct {
 	accountStore      *accounts.Store
 	orderStore        *orders.Store
@@ -33,6 +42,40 @@ type Handler struct {
 	apiStore          *Store
 	logger            *logging.Logger
 	maxProductResults int64
+}
+
+type productResponse struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ImagePath   string `json:"image_path"`
+	PriceCents  int64  `json:"price_cents"`
+}
+
+func toProductResponse(product storefront.Product) productResponse {
+	return productResponse{
+		ID:          product.ID,
+		Name:        product.Name,
+		Description: product.Description,
+		ImagePath:   product.ImagePath,
+		PriceCents:  product.PriceCents,
+	}
+}
+
+type orderResponse struct {
+	ID         int64  `json:"id"`
+	Status     string `json:"status"`
+	TotalCents int64  `json:"total_cents"`
+	CreatedAt  string `json:"created_at"`
+}
+
+func toOrderResponse(order orders.Order) orderResponse {
+	return orderResponse{
+		ID:         order.ID,
+		Status:     order.Status,
+		TotalCents: order.TotalCents,
+		CreatedAt:  order.CreatedAt,
+	}
 }
 
 func NewHandler(accountStore *accounts.Store, orderStore *orders.Store, productStore *storefront.Store, apiStore *Store, logger *logging.Logger, maxProductResults int) *Handler {
@@ -52,7 +95,11 @@ func (handler *Handler) AccountOrders(responseWriter http.ResponseWriter, reques
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"orders": orders})
+	resOrders := make([]orderResponse, len(orders))
+	for i, o := range orders {
+		resOrders[i] = toOrderResponse(o)
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"orders": resOrders})
 }
 
 func (handler *Handler) Order(responseWriter http.ResponseWriter, request *http.Request) {
@@ -79,21 +126,25 @@ func (handler *Handler) Order(responseWriter http.ResponseWriter, request *http.
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	itemResponses := make([]orderItemResponse, 0, len(items))
-	for _, item := range items {
-		itemResponses = append(itemResponses, orderItemResponse{ProductID: item.ProductID, ProductName: item.ProductName, Quantity: item.Quantity, PriceCents: item.PriceCents})
+	itemResponses := make([]orderItemResponse, len(items))
+	for in, item := range items {
+		itemResponses[in] = toOrderItemResponse(item)
 	}
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"order": order, "items": itemResponses})
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"order": toOrderResponse(order), "items": itemResponses})
 }
 
 func (handler *Handler) Products(responseWriter http.ResponseWriter, request *http.Request) {
-	products, err := handler.productStore.ListAllProducts(request.Context())
+	products, err := handler.productStore.ListProducts(request.Context(), handler.maxProductResults)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
 	responseWriter.Header().Set("Access-Control-Allow-Origin", "*")
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"products": products})
+	resProducts := make([]productResponse, len(products))
+	for i, p := range products {
+		resProducts[i] = toProductResponse(p)
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"products": resProducts})
 }
 
 func (handler *Handler) ProductPreflight(responseWriter http.ResponseWriter, _ *http.Request) {
